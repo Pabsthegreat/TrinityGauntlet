@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# uv lock file (not needed for pip installs)
+uv.lock
+
+# MediaPipe model (downloaded at runtime)
+*.task
+
+# macOS
+.DS_Store
