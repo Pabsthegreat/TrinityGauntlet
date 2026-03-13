@@ -1,4 +1,5 @@
-from gesture_recognition import run
+from game import launch_app
+
 
 if __name__ == "__main__":
-    run()
+    launch_app()

@@ -1,0 +1,24 @@
+{"timestamp_ms": 1773323994952, "mode": "Best of 3", "round_number": 1, "bot_move": "Scissors", "player_move": "Invalid", "outcome": "tie", "capture_invalid": true}
+{"timestamp_ms": 1773324003367, "mode": "Best of 3", "round_number": 2, "bot_move": "Scissors", "player_move": "Paper", "outcome": "bot_win", "capture_invalid": false}
+{"timestamp_ms": 1773324009512, "mode": "Best of 3", "round_number": 3, "bot_move": "Rock", "player_move": "Invalid", "outcome": "tie", "capture_invalid": true}
+{"timestamp_ms": 1773324020246, "mode": "Best of 3", "round_number": 4, "bot_move": "Rock", "player_move": "Scissors", "outcome": "bot_win", "capture_invalid": false}
+{"timestamp_ms": 1773324044045, "mode": "Best of 3", "round_number": 1, "bot_move": "Paper", "player_move": "Scissors", "outcome": "player_win", "capture_invalid": false}
+{"timestamp_ms": 1773324050808, "mode": "Best of 3", "round_number": 3, "bot_move": "Rock", "player_move": "Scissors", "outcome": "bot_win", "capture_invalid": false}
+{"timestamp_ms": 1773324055265, "mode": "Best of 3", "round_number": 4, "bot_move": "Paper", "player_move": "Paper", "outcome": "tie", "capture_invalid": false}
+{"timestamp_ms": 1773324059335, "mode": "Best of 3", "round_number": 6, "bot_move": "Paper", "player_move": "Rock", "outcome": "bot_win", "capture_invalid": false}
+{"timestamp_ms": 1773324066021, "mode": "Best of 3", "round_number": 1, "bot_move": "Paper", "player_move": "Paper", "outcome": "tie", "capture_invalid": false}
+{"timestamp_ms": 1773324072126, "mode": "Best of 3", "round_number": 2, "bot_move": "Paper", "player_move": "Scissors", "outcome": "player_win", "capture_invalid": false}
+{"timestamp_ms": 1773324077678, "mode": "Best of 3", "round_number": 3, "bot_move": "Rock", "player_move": "Paper", "outcome": "player_win", "capture_invalid": false}
+{"timestamp_ms": 1773324314895, "mode": "Best of 3", "round_number": 1, "bot_move": "Scissors", "player_move": "Paper", "outcome": "bot_win", "capture_invalid": false}
+{"timestamp_ms": 1773324319056, "mode": "Best of 3", "round_number": 2, "bot_move": "Rock", "player_move": "Scissors", "outcome": "bot_win", "capture_invalid": false}
+{"timestamp_ms": 1773324326562, "mode": "Best of 3", "round_number": 1, "bot_move": "Rock", "player_move": "Paper", "outcome": "player_win", "capture_invalid": false}
+{"timestamp_ms": 1773324332025, "mode": "Best of 3", "round_number": 2, "bot_move": "Scissors", "player_move": "Scissors", "outcome": "tie", "capture_invalid": false}
+{"timestamp_ms": 1773324567613, "mode": "Best of 3", "round_number": 1, "bot_move": "Rock", "player_move": "Paper", "outcome": "player_win", "capture_invalid": false}
+{"timestamp_ms": 1773324572550, "mode": "Best of 3", "round_number": 2, "bot_move": "Scissors", "player_move": "Scissors", "outcome": "tie", "capture_invalid": false}
+{"timestamp_ms": 1773324581673, "mode": "Best of 3", "round_number": 3, "bot_move": "Scissors", "player_move": "Rock", "outcome": "player_win", "capture_invalid": false}
+{"timestamp_ms": 1773324587937, "mode": "Best of 3", "round_number": 1, "bot_move": "Rock", "player_move": "Scissors", "outcome": "bot_win", "capture_invalid": false}
+{"timestamp_ms": 1773324596221, "mode": "Best of 3", "round_number": 2, "bot_move": "Paper", "player_move": "Paper", "outcome": "tie", "capture_invalid": false}
+{"timestamp_ms": 1773324601581, "mode": "Best of 3", "round_number": 3, "bot_move": "Paper", "player_move": "Scissors", "outcome": "player_win", "capture_invalid": false}
+{"timestamp_ms": 1773324625471, "mode": "Unlimited", "round_number": 1, "bot_move": "Rock", "player_move": "Paper", "outcome": "player_win", "capture_invalid": false}
+{"timestamp_ms": 1773324629609, "mode": "Unlimited", "round_number": 2, "bot_move": "Scissors", "player_move": "Scissors", "outcome": "tie", "capture_invalid": false}
+{"timestamp_ms": 1773324635439, "mode": "Unlimited", "round_number": 3, "bot_move": "Scissors", "player_move": "Rock", "outcome": "player_win", "capture_invalid": false}
