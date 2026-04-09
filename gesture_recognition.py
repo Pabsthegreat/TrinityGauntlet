@@ -41,6 +41,20 @@ MIDDLE_MCP, MIDDLE_PIP, MIDDLE_DIP, MIDDLE_TIP = 9, 10, 11, 12
 RING_MCP, RING_PIP, RING_DIP, RING_TIP = 13, 14, 15, 16
 PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP = 17, 18, 19, 20
 
+# MediaPipe hand-landmark connections (index pairs into the 21-point landmark
+# list) used to draw a skeleton overlay on the preview frame.
+HAND_CONNECTIONS = (
+    (0, 1), (1, 2), (2, 3), (3, 4),            # Thumb
+    (0, 5), (5, 6), (6, 7), (7, 8),            # Index
+    (5, 9), (9, 10), (10, 11), (11, 12),       # Middle
+    (9, 13), (13, 14), (14, 15), (15, 16),     # Ring
+    (13, 17), (17, 18), (18, 19), (19, 20),    # Pinky
+    (0, 17),                                   # Palm base
+)
+
+# Target size for the UI preview frame (16:9 thumbnail).
+PREVIEW_SIZE = (400, 225)
+
 
 def download_model():
     if not os.path.exists(MODEL_PATH):
@@ -176,6 +190,7 @@ class GestureRecognizer:
         self._capture_logging_active = False
         self._round_context = None
         self._latest_observation = self._default_observation()
+        self._latest_preview_frame = None  # BGR numpy array, downscaled for UI
 
     def _default_observation(self):
         return {
@@ -216,6 +231,16 @@ class GestureRecognizer:
     def get_latest_observation(self):
         with self._lock:
             return copy.deepcopy(self._latest_observation)
+
+    def get_latest_frame(self):
+        """Return the most recent preview frame as a BGR numpy array, or None
+        if no frame has been captured yet. The returned array is a copy so the
+        caller can mutate or convert it freely."""
+        with self._lock:
+            frame = self._latest_preview_frame
+            if frame is None:
+                return None
+            return frame.copy()
 
     def set_round_context(self, mode, round_number, bot_move):
         with self._lock:
@@ -305,10 +330,12 @@ class GestureRecognizer:
                         }
                     else:
                         self._state_history.clear()
+                        lm = None
+                        gesture = "No hand detected"
                         observation = {
                             "frame_idx": frame_idx,
                             "timestamp_ms": timestamp_ms,
-                            "gesture": "No hand detected",
+                            "gesture": gesture,
                             "valid": False,
                             "detection_present": False,
                             "raw_finger_states": {},
@@ -317,8 +344,11 @@ class GestureRecognizer:
                             "landmarks": [],
                         }
 
+                    preview_frame = self._build_preview_frame(frame, lm, gesture)
+
                     with self._lock:
                         self._latest_observation = observation
+                        self._latest_preview_frame = preview_frame
                         should_log = self._capture_logging_active and observation["detection_present"]
                         round_context = copy.deepcopy(self._round_context)
 
@@ -335,6 +365,42 @@ class GestureRecognizer:
         finally:
             if cap is not None:
                 cap.release()
+
+    def _build_preview_frame(self, frame, landmarks, gesture_label):
+        """Return a downscaled BGR copy of *frame* with the hand skeleton and
+        gesture label drawn on top. Safe to call when *landmarks* is None."""
+        preview = cv2.resize(frame, PREVIEW_SIZE)
+
+        if landmarks is not None:
+            h, w = preview.shape[:2]
+            pts = [(int(p.x * w), int(p.y * h)) for p in landmarks]
+            for a, b in HAND_CONNECTIONS:
+                cv2.line(preview, pts[a], pts[b], (80, 220, 100), 2, cv2.LINE_AA)
+            for p in pts:
+                cv2.circle(preview, p, 3, (40, 180, 255), -1, cv2.LINE_AA)
+
+        label_color = (255, 255, 255) if gesture_label in VALID_GESTURES else (180, 180, 180)
+        cv2.putText(
+            preview,
+            gesture_label,
+            (10, 24),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 0),
+            4,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            preview,
+            gesture_label,
+            (10, 24),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            label_color,
+            1,
+            cv2.LINE_AA,
+        )
+        return preview
 
     def _log_detection(self, log_file, frame, observation, round_context):
         image_name = f"frame_{observation['frame_idx']:06d}.jpg"

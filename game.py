@@ -4,14 +4,32 @@ Tkinter game UI for the adaptive Rock Paper Scissors bot.
 
 from __future__ import annotations
 
+import queue
 import random
 import shutil
 import subprocess
+import threading
 import time
 import tkinter as tk
 from dataclasses import dataclass
 
 from gesture_recognition import GestureRecognizer
+
+try:
+    from rps_serial_controller import RPSController
+    _SERIAL_AVAILABLE = True
+except ImportError:
+    RPSController = None  # type: ignore[assignment]
+    _SERIAL_AVAILABLE = False
+
+try:
+    import cv2
+    from PIL import Image, ImageTk
+    _CAMERA_PREVIEW_AVAILABLE = True
+except ImportError:
+    _CAMERA_PREVIEW_AVAILABLE = False
+
+CAMERA_POLL_MS = 33  # ~30 fps preview refresh
 
 GESTURE_ORDER = ["Rock", "Paper", "Scissors"]
 COUNTDOWN_WORDS = ["Rock", "Paper", "Scissors", "Shoot"]
@@ -71,13 +89,19 @@ class RPSGameApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Adaptive Rock Paper Scissors")
-        self.root.geometry("960x640")
-        self.root.minsize(900, 600)
+        self.root.geometry("960x860")
+        self.root.minsize(900, 820)
         self.root.configure(bg="#0e1a2b")
         self.root.protocol("WM_DELETE_WINDOW", self.shutdown)
 
         self.recognizer = GestureRecognizer()
         self.recognizer.start()
+
+        # Robot hand (serial). Initialised lazily in a background thread so a
+        # missing or slow Arduino never blocks UI startup.
+        self.hand: RPSController | None = None
+        self.hand_queue: queue.Queue | None = None
+        self.hand_thread: threading.Thread | None = None
 
         self.bot_strategy = BotStrategy()
         self.mode = "best_of_3"
@@ -90,6 +114,8 @@ class RPSGameApp:
         self.round_number = 0
 
         self.pending_job = None
+        self.camera_job = None
+        self.camera_photo = None  # kept as attribute so Tk doesn't GC the image
         self.capture_started_at = 0.0
         self.capture_start_frame_idx = 0
         self.last_sampled_frame_idx = 0
@@ -100,6 +126,91 @@ class RPSGameApp:
 
         self._build_ui()
         self.show_menu()
+        self._start_camera_preview()
+
+        if _SERIAL_AVAILABLE:
+            threading.Thread(
+                target=self._init_robot_hand, daemon=True, name="HandConnect"
+            ).start()
+
+    # ── Robot hand (serial) ───────────────────────────────────────────
+
+    def _init_robot_hand(self):
+        """Connect to the Arduino and spin up the worker thread. Runs in a
+        background thread so a missing/slow board never blocks UI startup."""
+        if RPSController is None:
+            return
+        port = RPSController.autodetect_port()
+        if port is None:
+            print("[Hand] No Arduino detected; game runs without physical hand.")
+            return
+        try:
+            controller = RPSController(port=port)
+        except Exception as e:
+            print(f"[Hand] Failed to open {port}: {e}")
+            return
+
+        # Order matters: set `hand` before `hand_queue` is exposed, so the
+        # worker always sees a valid controller when it pulls its first item.
+        self.hand = controller
+        self.hand_queue = queue.Queue()
+        self.hand_thread = threading.Thread(
+            target=self._hand_worker, daemon=True, name="HandWorker"
+        )
+        self.hand_thread.start()
+        print(f"[Hand] Robot hand ready on {port}.")
+        # Park at neutral now, in case the game is already mid-menu.
+        self._send_hand_gesture("neutral")
+
+    def _hand_worker(self):
+        """Consume gesture commands from the queue. A single worker serialises
+        all serial writes so no two threads ever touch the port at once."""
+        while True:
+            cmd = self.hand_queue.get()
+            if cmd is None:
+                return
+            try:
+                self.hand.send_gesture(cmd)
+            except Exception as e:
+                print(f"[Hand] send '{cmd}' failed: {e}")
+
+    def _send_hand_gesture(self, gesture: str):
+        """Queue a non-blocking gesture command. Safe to call when the hand
+        isn't connected — it simply becomes a no-op."""
+        if self.hand_queue is None:
+            return
+        self.hand_queue.put(gesture.lower())
+
+    # ── Camera preview ────────────────────────────────────────────────
+
+    def _start_camera_preview(self):
+        if not _CAMERA_PREVIEW_AVAILABLE:
+            return
+        self._poll_camera_frame()
+
+    def _poll_camera_frame(self):
+        frame = self.recognizer.get_latest_frame()
+        if frame is not None:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(rgb)
+            self.camera_photo = ImageTk.PhotoImage(image=image)
+            # Switching from text placeholder to image — clear the width/height
+            # char-cell sizing so Tk sizes the label to the image instead.
+            self.camera_label.configure(
+                image=self.camera_photo,
+                text="",
+                width=0,
+                height=0,
+            )
+        self.camera_job = self.root.after(CAMERA_POLL_MS, self._poll_camera_frame)
+
+    def _stop_camera_preview(self):
+        if self.camera_job is not None:
+            try:
+                self.root.after_cancel(self.camera_job)
+            except tk.TclError:
+                pass
+            self.camera_job = None
 
     def _build_ui(self):
         self.root.grid_columnconfigure(0, weight=1)
@@ -134,7 +245,31 @@ class RPSGameApp:
             fg="#ffd166",
             bg="#0e1a2b",
         )
-        self.hero_label.grid(row=2, column=0, pady=(10, 18), sticky="ew")
+        self.hero_label.grid(row=2, column=0, pady=(10, 12), sticky="ew")
+
+        self.camera_frame = tk.Frame(
+            self.container,
+            bg="#16263b",
+            highlightthickness=2,
+            highlightbackground="#2b3a55",
+            padx=6,
+            pady=6,
+        )
+        self.camera_frame.grid(row=3, column=0, pady=(0, 14))
+        self.camera_label = tk.Label(
+            self.camera_frame,
+            text=(
+                "Live camera preview\nConnecting to webcam…"
+                if _CAMERA_PREVIEW_AVAILABLE
+                else "Live preview unavailable\n(install pillow + opencv)"
+            ),
+            font=("Helvetica", 12),
+            fg="#b1c6de",
+            bg="#16263b",
+            width=56,   # in character cells until the first image replaces it
+            height=12,
+        )
+        self.camera_label.grid()
 
         self.status_label = tk.Label(
             self.container,
@@ -143,10 +278,10 @@ class RPSGameApp:
             fg="#eff6ff",
             bg="#0e1a2b",
         )
-        self.status_label.grid(row=3, column=0, pady=(0, 22), sticky="ew")
+        self.status_label.grid(row=4, column=0, pady=(0, 22), sticky="ew")
 
         self.score_frame = tk.Frame(self.container, bg="#16263b", padx=24, pady=18)
-        self.score_frame.grid(row=4, column=0, sticky="ew")
+        self.score_frame.grid(row=5, column=0, sticky="ew")
         for column in range(3):
             self.score_frame.grid_columnconfigure(column, weight=1)
 
@@ -178,7 +313,7 @@ class RPSGameApp:
         self.round_value.grid(row=0, column=2, sticky="e")
 
         self.detail_frame = tk.Frame(self.container, bg="#0e1a2b")
-        self.detail_frame.grid(row=5, column=0, pady=(28, 18), sticky="ew")
+        self.detail_frame.grid(row=6, column=0, pady=(28, 18), sticky="ew")
         for column in range(3):
             self.detail_frame.grid_columnconfigure(column, weight=1)
 
@@ -210,7 +345,7 @@ class RPSGameApp:
         self.result_label.grid(row=0, column=2, sticky="e")
 
         self.button_frame = tk.Frame(self.container, bg="#0e1a2b")
-        self.button_frame.grid(row=6, column=0, pady=(24, 0), sticky="ew")
+        self.button_frame.grid(row=7, column=0, pady=(24, 0), sticky="ew")
 
         self.primary_button = tk.Button(
             self.button_frame,
@@ -389,6 +524,8 @@ class RPSGameApp:
         self.player_move_label.config(text="Your move: waiting")
         self.result_label.config(text="Result: pending")
         self.status_label.config(text="Hold your hand ready. Only the SHOOT window counts.")
+        # Park the robot hand at neutral so the bot's move is hidden during the countdown.
+        self._send_hand_gesture("neutral")
         self._show_countdown_step(0)
 
     def _show_countdown_step(self, index):
@@ -403,6 +540,9 @@ class RPSGameApp:
 
         if word == "Shoot":
             self.status_label.config(text="Capture window open. Hold one gesture steady.")
+            # Fire the physical hand at the exact moment of "Shoot" so the
+            # servos start travelling to the bot's gesture as the player reveals.
+            self._send_hand_gesture(self.bot_strategy.current_move)
             self.schedule(60, self.begin_capture_window)
         else:
             self.status_label.config(text=f"Countdown: {word}")
@@ -533,9 +673,23 @@ class RPSGameApp:
 
     def shutdown(self):
         self.cancel_pending_job()
+        self._stop_camera_preview()
         self._stop_audio()
         self.recognizer.set_capture_logging(False)
         self.recognizer.stop()
+        # Park the robot hand, then tell the worker to exit and wait briefly
+        # for it so the final neutral reaches the Arduino before we close.
+        if self.hand_queue is not None:
+            self.hand_queue.put("neutral")
+            self.hand_queue.put(None)
+        if self.hand_thread is not None:
+            self.hand_thread.join(timeout=3.0)
+        if self.hand is not None:
+            try:
+                if self.hand.ser and self.hand.ser.is_open:
+                    self.hand.ser.close()
+            except Exception:
+                pass
         self.root.destroy()
 
 
