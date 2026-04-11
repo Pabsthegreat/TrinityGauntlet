@@ -204,6 +204,43 @@ class RPSGameApp:
             )
         self.camera_job = self.root.after(CAMERA_POLL_MS, self._poll_camera_frame)
 
+    SERVO_LABELS = {
+        "A": "Servo 1 (index+middle)",
+        "B": "Servo 2 (ring+pinky+thumb)",
+    }
+
+    def _test_servo(self, gesture):
+        """Send a gesture to the servo from the test panel. Also resets the
+        per-servo toggle state since the gesture affects both servos."""
+        self._send_hand_gesture(gesture)
+        self._servo_states = {"A": False, "B": False}
+        for key, btn in self._servo_buttons.items():
+            btn.config(text=f"{self.SERVO_LABELS[key]}\n[relaxed]")
+        self.test_status.config(text=f"Sent: {gesture}")
+
+    def _toggle_single_servo(self, key):
+        """Toggle a single servo between engaged and relaxed without touching
+        the other. Uses the per-servo test commands on the Arduino."""
+        engaged_now = not self._servo_states[key]
+        self._servo_states[key] = engaged_now
+        suffix = "engage" if engaged_now else "relax"
+        self._send_hand_gesture(f"{key.lower()}_{suffix}")
+
+        state_text = "[engaged]" if engaged_now else "[relaxed]"
+        self._servo_buttons[key].config(
+            text=f"{self.SERVO_LABELS[key]}\n{state_text}"
+        )
+        self.test_status.config(
+            text=f"{self.SERVO_LABELS[key]} -> {'engaged' if engaged_now else 'relaxed'}"
+        )
+
+    def _toggle_test_panel(self):
+        """Show or hide the servo test panel."""
+        if self.test_frame.winfo_viewable():
+            self.test_frame.grid_remove()
+        else:
+            self.test_frame.grid()
+
     def _stop_camera_preview(self):
         if self.camera_job is not None:
             try:
@@ -407,6 +444,70 @@ class RPSGameApp:
         )
         self.menu_button.grid(row=0, column=3, padx=8, pady=8)
 
+        # ── Servo test panel (hidden by default) ─────────────────────
+        self.test_frame = tk.Frame(self.container, bg="#0e1a2b")
+        self.test_frame.grid(row=8, column=0, pady=(18, 0), sticky="ew")
+        self.test_frame.grid_remove()  # hidden until "Test Servos" is clicked
+
+        tk.Label(
+            self.test_frame,
+            text="Servo Test Panel",
+            font=("Helvetica", 14, "bold"),
+            fg="#7bdff2",
+            bg="#0e1a2b",
+        ).grid(row=0, column=0, columnspan=5, pady=(0, 8))
+
+        test_gestures = [("Rock", "#ef476f"), ("Paper", "#06d6a0"),
+                         ("Scissors", "#ffd166"), ("Neutral", "#b1c6de")]
+        for col, (gesture, color) in enumerate(test_gestures):
+            btn = tk.Button(
+                self.test_frame,
+                text=gesture,
+                font=("Helvetica", 13, "bold"),
+                command=lambda g=gesture: self._test_servo(g),
+                bg=color,
+                fg="#182235",
+                activebackground=color,
+                activeforeground="#182235",
+                bd=0,
+                padx=18,
+                pady=8,
+            )
+            btn.grid(row=1, column=col, padx=6, pady=4)
+
+        # Per-servo toggle row (test each servo in isolation).
+        self._servo_states = {"A": False, "B": False}
+        self._servo_buttons = {}
+        servo_labels = [
+            ("A", "Servo 1 (index+middle)"),
+            ("B", "Servo 2 (ring+pinky+thumb)"),
+        ]
+        for col, (key, label) in enumerate(servo_labels):
+            btn = tk.Button(
+                self.test_frame,
+                text=f"{label}\n[relaxed]",
+                font=("Helvetica", 11, "bold"),
+                command=lambda k=key: self._toggle_single_servo(k),
+                bg="#dce6f2",
+                fg="#182235",
+                activebackground="#c8d8ea",
+                activeforeground="#182235",
+                bd=0,
+                padx=14,
+                pady=6,
+            )
+            btn.grid(row=2, column=col, padx=6, pady=(8, 4))
+            self._servo_buttons[key] = btn
+
+        self.test_status = tk.Label(
+            self.test_frame,
+            text="Press a button to move the servo.",
+            font=("Helvetica", 12),
+            fg="#b1c6de",
+            bg="#0e1a2b",
+        )
+        self.test_status.grid(row=3, column=0, columnspan=5, pady=(6, 0))
+
     def schedule(self, delay_ms, callback):
         self.cancel_pending_job()
         self.pending_job = self.root.after(delay_ms, callback)
@@ -501,11 +602,13 @@ class RPSGameApp:
         self.secondary_button.config(state=tk.NORMAL, text="Best of 3")
         self.tertiary_button.config(state=tk.NORMAL, text="Unlimited")
         self.menu_button.config(text="Quit", command=self.shutdown)
+        self.test_frame.grid()  # show test panel on menu
         self.set_mode(self.mode)
 
     def start_game(self):
         self.cancel_pending_job()
         self.reset_session()
+        self.test_frame.grid_remove()  # hide test panel during game
         self.state = "countdown"
         self.title_label.config(text="Adaptive RPS")
         self.subtitle_label.config(text="Follow the countdown and lock your hand on SHOOT.")
@@ -643,6 +746,10 @@ class RPSGameApp:
             outcome=round_result.outcome,
             capture_invalid=round_result.capture_invalid,
         )
+
+        # Return the robot hand to neutral after the player has had a moment
+        # to see the reveal, so it isn't stuck holding the gesture.
+        self.root.after(1500, lambda: self._send_hand_gesture("neutral"))
 
         if self.mode == "best_of_3" and (self.player_score >= 2 or self.bot_score >= 2):
             self.show_game_over()

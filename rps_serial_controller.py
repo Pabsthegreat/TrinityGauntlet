@@ -31,6 +31,11 @@ class RPSController:
         "paper":    b"P",
         "scissors": b"S",
         "neutral":  b"N",
+        # Individual servo test commands (don't touch the other servo)
+        "a_engage":  b"1",
+        "a_relax":   b"2",
+        "b_engage":  b"3",
+        "b_relax":   b"4",
     }
 
     def __init__(self, port: str = "/dev/ttyUSB0", baud: int = 115200, timeout: float = 2.0):
