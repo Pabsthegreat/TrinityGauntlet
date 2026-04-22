@@ -180,6 +180,10 @@ class GestureRecognizer:
         self.min_hand_presence_confidence = min_hand_presence_confidence
         self.min_tracking_confidence = min_tracking_confidence
 
+        # Set RPS_GESTURE_INPUT=keyboard to use keyboard input instead of webcam.
+        # Useful when running in WSL2 where /dev/video0 is not available.
+        self.keyboard_mode = os.getenv("RPS_GESTURE_INPUT", "").strip().lower() == "keyboard"
+
         self._state_history = deque(maxlen=smoothing_window)
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -191,6 +195,7 @@ class GestureRecognizer:
         self._round_context = None
         self._latest_observation = self._default_observation()
         self._latest_preview_frame = None  # BGR numpy array, downscaled for UI
+        self._manual_gesture: str | None = None  # set by set_manual_gesture() in keyboard mode
 
     def _default_observation(self):
         return {
@@ -205,8 +210,23 @@ class GestureRecognizer:
             "landmarks": [],
         }
 
+    def set_manual_gesture(self, gesture: str | None):
+        """Set the gesture that keyboard mode reports. Pass None to clear."""
+        with self._lock:
+            self._manual_gesture = gesture
+
     def start(self):
         if self._thread and self._thread.is_alive():
+            return
+
+        if self.keyboard_mode:
+            ensure_debug_dirs()
+            self._stop_event.clear()
+            self._ready_event.set()  # instantly ready — no webcam needed
+            self._thread = threading.Thread(
+                target=self._run_keyboard_loop, name="gesture-recognizer", daemon=True
+            )
+            self._thread.start()
             return
 
         download_model()
@@ -227,6 +247,44 @@ class GestureRecognizer:
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3.0)
+
+    def _run_keyboard_loop(self):
+        """Polling loop for keyboard mode: publishes the manually-set gesture
+        at ~30 fps without requiring a webcam."""
+        frame_idx = 0
+        while not self._stop_event.is_set():
+            time.sleep(0.033)
+            frame_idx += 1
+            timestamp_ms = int(time.monotonic() * 1000)
+            with self._lock:
+                gesture = self._manual_gesture if self._manual_gesture else "No hand detected"
+                should_log = self._capture_logging_active and gesture in VALID_GESTURES
+                round_context = copy.deepcopy(self._round_context)
+
+            observation = {
+                "frame_idx": frame_idx,
+                "timestamp_ms": timestamp_ms,
+                "gesture": gesture,
+                "valid": gesture in VALID_GESTURES,
+                "detection_present": gesture in VALID_GESTURES,
+                "raw_finger_states": {},
+                "smoothed_finger_states": {},
+                "finger_metrics": {},
+                "landmarks": [],
+            }
+            with self._lock:
+                self._latest_observation = observation
+
+            if should_log:
+                entry = {
+                    "frame_idx": frame_idx,
+                    "timestamp_ms": timestamp_ms,
+                    "gesture": gesture,
+                    "round_context": round_context,
+                    "keyboard_mode": True,
+                }
+                with open(DEBUG_ROUNDS_LOG_PATH, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry) + "\n")
 
     def get_latest_observation(self):
         with self._lock:

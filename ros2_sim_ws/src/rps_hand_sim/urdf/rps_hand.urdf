@@ -1,0 +1,215 @@
+<?xml version="1.0"?>
+<robot name="rps_hand" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <material name="mat_base">
+    <color rgba="0.15 0.18 0.22 1.0"/>
+  </material>
+  <material name="mat_a">
+    <color rgba="0.10 0.70 0.85 1.0"/>
+  </material>
+  <material name="mat_b">
+    <color rgba="0.95 0.45 0.10 1.0"/>
+  </material>
+  <material name="mat_skin">
+    <color rgba="0.93 0.78 0.66 1.0"/>
+  </material>
+
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.02 0 0.00" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.16 0.12 0.04"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.06 0 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.06 0.10 0.045"/>
+      </geometry>
+      <material name="mat_base"/>
+    </visual>
+    <collision>
+      <origin xyz="0.00 0 0.00" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.20 0.13 0.05"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="thumb_link">
+    <inertial>
+      <origin xyz="0.02 -0.06 0.00"/>
+      <mass value="0.08"/>
+      <inertia ixx="0.0004" ixy="0.0" ixz="0.0" iyy="0.0004" iyz="0.0" izz="0.0004"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.02 -0.06 0.0" rpy="0 0 0.6"/>
+      <geometry>
+        <box size="0.07 0.024 0.022"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <visual>
+      <origin xyz="0.06 -0.08 0.0" rpy="0 0 0.55"/>
+      <geometry>
+        <box size="0.05 0.020 0.018"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <collision>
+      <origin xyz="0.04 -0.07 0.0" rpy="0 0 0.58"/>
+      <geometry>
+        <box size="0.10 0.03 0.025"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_group_a_link">
+    <inertial>
+      <origin xyz="0.11 0.05 0.01"/>
+      <mass value="0.2"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.025 0.0 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.055 0.026"/>
+      </geometry>
+      <material name="mat_a"/>
+    </visual>
+    <visual>
+      <origin xyz="0.095 0.015 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.11 0.018 0.022"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <visual>
+      <origin xyz="0.095 -0.015 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.11 0.018 0.022"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <visual>
+      <origin xyz="0.16 0.015 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.055 0.016 0.020"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <visual>
+      <origin xyz="0.16 -0.015 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.055 0.016 0.020"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <collision>
+      <origin xyz="0.10 0.0 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.16 0.06 0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="finger_group_b_link">
+    <inertial>
+      <origin xyz="0.11 -0.05 0.01"/>
+      <mass value="0.25"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.022 0.0 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.045 0.065 0.026"/>
+      </geometry>
+      <material name="mat_b"/>
+    </visual>
+    <visual>
+      <origin xyz="0.080 0.018 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.095 0.017 0.022"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <visual>
+      <origin xyz="0.080 -0.018 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.095 0.017 0.022"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <visual>
+      <origin xyz="0.135 0.018 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.050 0.015 0.020"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <visual>
+      <origin xyz="0.135 -0.018 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.050 0.015 0.020"/>
+      </geometry>
+      <material name="mat_skin"/>
+    </visual>
+    <collision>
+      <origin xyz="0.085 0.0 0.0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.145 0.07 0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="thumb_fixed_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="thumb_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="servo_a_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="finger_group_a_link"/>
+    <origin xyz="-0.06 0.05 0.01" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="3.0" effort="1.0" velocity="3.0"/>
+    <dynamics damping="0.2" friction="0.1"/>
+  </joint>
+
+  <joint name="servo_b_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="finger_group_b_link"/>
+    <origin xyz="-0.06 -0.05 0.01" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="3.0" effort="1.0" velocity="3.0"/>
+    <dynamics damping="0.2" friction="0.1"/>
+  </joint>
+
+  <ros2_control name="RPSHandSystem" type="system">
+    <hardware>
+      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+    </hardware>
+    <joint name="servo_a_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="servo_b_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+  <gazebo>
+    <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
+      <parameters>package://rps_hand_sim/config/controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
+</robot>

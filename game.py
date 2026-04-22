@@ -4,6 +4,7 @@ Tkinter game UI for the adaptive Rock Paper Scissors bot.
 
 from __future__ import annotations
 
+import os
 import queue
 import random
 import shutil
@@ -11,6 +12,7 @@ import subprocess
 import threading
 import time
 import tkinter as tk
+from typing import Any
 from dataclasses import dataclass
 
 from gesture_recognition import GestureRecognizer
@@ -21,6 +23,14 @@ try:
 except ImportError:
     RPSController = None  # type: ignore[assignment]
     _SERIAL_AVAILABLE = False
+
+try:
+    from rps_sim_controller import RPSSimController, RPSSimVizController
+    _SIM_AVAILABLE = True
+except ImportError:
+    RPSSimController = None  # type: ignore[assignment]
+    RPSSimVizController = None  # type: ignore[assignment]
+    _SIM_AVAILABLE = False
 
 try:
     import cv2
@@ -97,11 +107,14 @@ class RPSGameApp:
         self.recognizer = GestureRecognizer()
         self.recognizer.start()
 
-        # Robot hand (serial). Initialised lazily in a background thread so a
-        # missing or slow Arduino never blocks UI startup.
-        self.hand: RPSController | None = None
+        # Robot hand backend. Initialised lazily in a background thread so a
+        # missing or slow device never blocks UI startup.
+        self.hand_backend = os.getenv("RPS_HAND_BACKEND", "auto").strip().lower()
+        self.hand: Any = None
+        self.player_hand: Any = None
         self.hand_queue: queue.Queue | None = None
         self.hand_thread: threading.Thread | None = None
+        self._last_player_preview_gesture: str | None = None
 
         self.bot_strategy = BotStrategy()
         self.mode = "best_of_3"
@@ -128,27 +141,77 @@ class RPSGameApp:
         self.show_menu()
         self._start_camera_preview()
 
-        if _SERIAL_AVAILABLE:
-            threading.Thread(
-                target=self._init_robot_hand, daemon=True, name="HandConnect"
-            ).start()
+        if self.recognizer.keyboard_mode:
+            self.root.bind("<r>", lambda e: self.recognizer.set_manual_gesture("Rock"))
+            self.root.bind("<p>", lambda e: self.recognizer.set_manual_gesture("Paper"))
+            self.root.bind("<s>", lambda e: self.recognizer.set_manual_gesture("Scissors"))
+            self.root.bind("<n>", lambda e: self.recognizer.set_manual_gesture(None))
+
+        threading.Thread(
+            target=self._init_robot_hand, daemon=True, name="HandConnect"
+        ).start()
 
     # ── Robot hand (serial) ───────────────────────────────────────────
 
     def _init_robot_hand(self):
-        """Connect to the Arduino and spin up the worker thread. Runs in a
-        background thread so a missing/slow board never blocks UI startup."""
-        if RPSController is None:
+        """Connect to the configured hand backend and spin up the worker
+        thread. Runs in a background thread so slow startup never blocks UI."""
+        backend = self.hand_backend
+
+        if backend in {"off", "none", "disabled"}:
+            print("[Hand] Controller disabled (RPS_HAND_BACKEND=off).")
             return
-        port = RPSController.autodetect_port()
-        if port is None:
-            print("[Hand] No Arduino detected; game runs without physical hand.")
-            return
-        try:
-            controller = RPSController(port=port)
-        except Exception as e:
-            print(f"[Hand] Failed to open {port}: {e}")
-            return
+
+        controller = None
+
+        if backend == "sim":
+            if not _SIM_AVAILABLE or RPSSimController is None:
+                print("[Hand] Simulation backend unavailable (missing ROS2 Python deps).")
+                return
+            try:
+                controller = RPSSimController.from_env("RPS_SIM")
+                print("[Hand] Simulation backend connected.")
+                if RPSSimVizController is not None:
+                    try:
+                        self.player_hand = RPSSimVizController.from_env("RPS_PLAYER_SIM")
+                        print("[Hand] Player simulation hand connected.")
+                    except Exception as e:
+                        print(f"[Hand] Player sim hand unavailable: {e}")
+            except Exception as e:
+                print(f"[Hand] Failed to start sim backend: {e}")
+                return
+        else:
+            if not _SERIAL_AVAILABLE or RPSController is None:
+                if backend == "serial":
+                    print("[Hand] Serial backend unavailable (pyserial not installed).")
+                    return
+            else:
+                port = RPSController.autodetect_port()
+                if port is not None:
+                    try:
+                        controller = RPSController(port=port)
+                        print(f"[Hand] Robot hand ready on {port}.")
+                    except Exception as e:
+                        print(f"[Hand] Failed to open {port}: {e}")
+                        if backend == "serial":
+                            return
+
+            if controller is None and backend == "auto" and _SIM_AVAILABLE and RPSSimController is not None:
+                try:
+                    controller = RPSSimController.from_env("RPS_SIM")
+                    print("[Hand] Auto-switched to simulation backend.")
+                    if RPSSimVizController is not None:
+                        try:
+                            self.player_hand = RPSSimVizController.from_env("RPS_PLAYER_SIM")
+                            print("[Hand] Player simulation hand connected.")
+                        except Exception as e:
+                            print(f"[Hand] Player sim hand unavailable: {e}")
+                except Exception as e:
+                    print(f"[Hand] Sim fallback failed: {e}")
+
+            if controller is None:
+                print("[Hand] No controller available; game runs without hand backend.")
+                return
 
         # Order matters: set `hand` before `hand_queue` is exposed, so the
         # worker always sees a valid controller when it pulls its first item.
@@ -158,7 +221,6 @@ class RPSGameApp:
             target=self._hand_worker, daemon=True, name="HandWorker"
         )
         self.hand_thread.start()
-        print(f"[Hand] Robot hand ready on {port}.")
         # Park at neutral now, in case the game is already mid-menu.
         self._send_hand_gesture("neutral")
 
@@ -180,6 +242,15 @@ class RPSGameApp:
         if self.hand_queue is None:
             return
         self.hand_queue.put(gesture.lower())
+
+    def _send_player_hand_gesture(self, gesture: str):
+        """Send gesture to the player visualisation hand (sim backend only)."""
+        if self.player_hand is None:
+            return
+        try:
+            self.player_hand.send_gesture(gesture.lower())
+        except Exception as e:
+            print(f"[Hand] player send '{gesture}' failed: {e}")
 
     # ── Camera preview ────────────────────────────────────────────────
 
@@ -296,9 +367,13 @@ class RPSGameApp:
         self.camera_label = tk.Label(
             self.camera_frame,
             text=(
-                "Live camera preview\nConnecting to webcam…"
-                if _CAMERA_PREVIEW_AVAILABLE
-                else "Live preview unavailable\n(install pillow + opencv)"
+                "Keyboard mode  (no webcam)\n\nPress during SHOOT window:\n  R = Rock    P = Paper    S = Scissors\n  N = clear"
+                if self.recognizer.keyboard_mode
+                else (
+                    "Live camera preview\nConnecting to webcam…"
+                    if _CAMERA_PREVIEW_AVAILABLE
+                    else "Live preview unavailable\n(install pillow + opencv)"
+                )
             ),
             font=("Helvetica", 12),
             fg="#b1c6de",
@@ -629,6 +704,8 @@ class RPSGameApp:
         self.status_label.config(text="Hold your hand ready. Only the SHOOT window counts.")
         # Park the robot hand at neutral so the bot's move is hidden during the countdown.
         self._send_hand_gesture("neutral")
+        self._send_player_hand_gesture("neutral")
+        self._last_player_preview_gesture = None
         self._show_countdown_step(0)
 
     def _show_countdown_step(self, index):
@@ -675,6 +752,9 @@ class RPSGameApp:
 
             if latest["frame_idx"] > self.capture_start_frame_idx and latest["valid"]:
                 gesture = latest["gesture"]
+                if gesture != self._last_player_preview_gesture:
+                    self._send_player_hand_gesture(gesture)
+                    self._last_player_preview_gesture = gesture
                 if gesture == self.streak_gesture:
                     self.streak_count += 1
                 else:
@@ -750,6 +830,7 @@ class RPSGameApp:
         # Return the robot hand to neutral after the player has had a moment
         # to see the reveal, so it isn't stuck holding the gesture.
         self.root.after(1500, lambda: self._send_hand_gesture("neutral"))
+        self.root.after(1500, lambda: self._send_player_hand_gesture("neutral"))
 
         if self.mode == "best_of_3" and (self.player_score >= 2 or self.bot_score >= 2):
             self.show_game_over()
@@ -793,8 +874,12 @@ class RPSGameApp:
             self.hand_thread.join(timeout=3.0)
         if self.hand is not None:
             try:
-                if self.hand.ser and self.hand.ser.is_open:
-                    self.hand.ser.close()
+                self.hand.close()
+            except Exception:
+                pass
+        if self.player_hand is not None:
+            try:
+                self.player_hand.close()
             except Exception:
                 pass
         self.root.destroy()
